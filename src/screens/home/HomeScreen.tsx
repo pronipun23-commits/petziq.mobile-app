@@ -4,25 +4,43 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { PawPrint, Bell, Heart, CalendarClock, Activity, ArrowRight, Sparkles } from 'lucide-react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
-import { getPets, type PetRow } from '../../services/supabase';
+import { getActivities, getPets, getReminders, type ActivityRow, type PetRow, type ReminderRow } from '../../services/supabase';
 
 export default function HomeScreen() {
   const navigation = useNavigation<BottomTabNavigationProp<any>>();
   const [pets, setPets] = useState<PetRow[]>([]);
+  const [reminders, setReminders] = useState<ReminderRow[]>([]);
+  const [activities, setActivities] = useState<ActivityRow[]>([]);
 
   useEffect(() => {
-    const loadPets = async () => {
-      const nextPets = await getPets();
+    const loadDashboardData = async () => {
+      const [nextPets, nextReminders, nextActivities] = await Promise.all([getPets(), getReminders(), getActivities()]);
       setPets(nextPets);
+      setReminders(nextReminders);
+      setActivities(nextActivities);
     };
 
-    void loadPets();
+    void loadDashboardData();
   }, []);
+
+  const upcomingReminders = reminders.filter((reminder) => !reminder.is_completed).length;
+  const completedReminders = reminders.filter((reminder) => reminder.is_completed).length;
+  const todayActivities = activities.filter((activity) => {
+    if (!activity.activity_date) return false;
+    const activityDate = new Date(activity.activity_date);
+    const now = new Date();
+    return (
+      activityDate.getFullYear() === now.getFullYear() &&
+      activityDate.getMonth() === now.getMonth() &&
+      activityDate.getDate() === now.getDate()
+    );
+  }).length;
+  const totalMinutes = activities.reduce((sum, activity) => sum + Number(activity.duration_minutes ?? 0), 0);
 
   const cards = [
     { label: 'My Pets', value: String(pets.length || 0), icon: PawPrint, route: 'MyPets' },
-    { label: 'Reminders', value: '4', icon: CalendarClock, route: 'Reminders' },
-    { label: 'Activity', value: String(Math.max(pets.length * 2, 1)), icon: Activity, route: 'Activity' },
+    { label: 'Reminders', value: String(upcomingReminders), icon: CalendarClock, route: 'Reminders' },
+    { label: 'Activity', value: String(todayActivities || 0), icon: Activity, route: 'Activity' },
   ];
 
   const statusSummary = pets.length > 0 ? pets.filter((pet) => (pet.health_status || '').toLowerCase() !== 'poor').length : 0;
@@ -55,7 +73,7 @@ export default function HomeScreen() {
           <View style={{ flexDirection: 'row', gap: 12 }}>
             <View style={{ flex: 1, backgroundColor: '#0d2130', borderRadius: 14, padding: 14 }}>
               <Text style={{ color: '#9cb6c7', fontSize: 12 }}>Tasks</Text>
-              <Text style={{ color: '#f4fbff', fontSize: 26, fontWeight: '800' }}>{Math.max(pets.length * 2, 1).toString().padStart(2, '0')}</Text>
+              <Text style={{ color: '#f4fbff', fontSize: 26, fontWeight: '800' }}>{String(upcomingReminders).padStart(2, '0')}</Text>
             </View>
             <View style={{ flex: 1, backgroundColor: '#0d2130', borderRadius: 14, padding: 14 }}>
               <Text style={{ color: '#9cb6c7', fontSize: 12 }}>Health</Text>
@@ -81,6 +99,17 @@ export default function HomeScreen() {
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
             <Text style={{ color: '#edf8ff', fontSize: 18, fontWeight: '700' }}>Pet highlights</Text>
             <Sparkles size={18} color="#8ae0c5" />
+          </View>
+
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 16 }}>
+            <View style={{ flex: 1, backgroundColor: '#0d2130', borderRadius: 14, padding: 12 }}>
+              <Text style={{ color: '#9cb6c7', fontSize: 12 }}>Completed</Text>
+              <Text style={{ color: '#f4fbff', fontSize: 20, fontWeight: '800' }}>{completedReminders}</Text>
+            </View>
+            <View style={{ flex: 1, marginLeft: 12, backgroundColor: '#0d2130', borderRadius: 14, padding: 12 }}>
+              <Text style={{ color: '#9cb6c7', fontSize: 12 }}>Minutes</Text>
+              <Text style={{ color: '#f4fbff', fontSize: 20, fontWeight: '800' }}>{totalMinutes}</Text>
+            </View>
           </View>
 
           <View style={{ marginTop: 16, gap: 12 }}>
