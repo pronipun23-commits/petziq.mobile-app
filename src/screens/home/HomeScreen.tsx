@@ -1,17 +1,36 @@
+import { useEffect, useState } from 'react';
 import { View, Text, Pressable, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { PawPrint, Bell, Heart, CalendarClock, Activity, ArrowRight, Sparkles } from 'lucide-react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
+import { getPets, type PetRow } from '../../services/supabase';
 
 export default function HomeScreen() {
   const navigation = useNavigation<BottomTabNavigationProp<any>>();
+  const [pets, setPets] = useState<PetRow[]>([]);
+
+  useEffect(() => {
+    const loadPets = async () => {
+      const nextPets = await getPets();
+      setPets(nextPets);
+    };
+
+    void loadPets();
+  }, []);
 
   const cards = [
-    { label: 'My Pets', value: '2', icon: PawPrint, route: 'MyPets' },
+    { label: 'My Pets', value: String(pets.length || 0), icon: PawPrint, route: 'MyPets' },
     { label: 'Reminders', value: '4', icon: CalendarClock, route: 'Reminders' },
-    { label: 'Activity', value: '8', icon: Activity, route: 'Activity' },
+    { label: 'Activity', value: String(Math.max(pets.length * 2, 1)), icon: Activity, route: 'Activity' },
   ];
+
+  const statusSummary = pets.length > 0 ? pets.filter((pet) => (pet.health_status || '').toLowerCase() !== 'poor').length : 0;
+  const highlights = pets.slice(0, 2).map((pet) => ({
+    name: pet.name,
+    detail: `${pet.species || 'Pet'} • ${pet.health_status || 'healthy'}`,
+    tint: '#7dd3fc',
+  }));
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#07141d' }}>
@@ -36,11 +55,11 @@ export default function HomeScreen() {
           <View style={{ flexDirection: 'row', gap: 12 }}>
             <View style={{ flex: 1, backgroundColor: '#0d2130', borderRadius: 14, padding: 14 }}>
               <Text style={{ color: '#9cb6c7', fontSize: 12 }}>Tasks</Text>
-              <Text style={{ color: '#f4fbff', fontSize: 26, fontWeight: '800' }}>04</Text>
+              <Text style={{ color: '#f4fbff', fontSize: 26, fontWeight: '800' }}>{Math.max(pets.length * 2, 1).toString().padStart(2, '0')}</Text>
             </View>
             <View style={{ flex: 1, backgroundColor: '#0d2130', borderRadius: 14, padding: 14 }}>
               <Text style={{ color: '#9cb6c7', fontSize: 12 }}>Health</Text>
-              <Text style={{ color: '#baf7df', fontSize: 26, fontWeight: '800' }}>Good</Text>
+              <Text style={{ color: '#baf7df', fontSize: 26, fontWeight: '800' }}>{statusSummary > 0 ? 'Good' : 'Review'}</Text>
             </View>
           </View>
         </View>
@@ -65,18 +84,19 @@ export default function HomeScreen() {
           </View>
 
           <View style={{ marginTop: 16, gap: 12 }}>
-            {[
-              { name: 'Milo', detail: 'Walk complete • 2.4 km', tint: '#7dd3fc' },
-              { name: 'Luna', detail: 'Feeding reminder • 6:30 pm', tint: '#a7f3d0' },
-            ].map((pet) => (
-              <View key={pet.name} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#0d2130', padding: 12, borderRadius: 14 }}>
-                <View>
-                  <Text style={{ color: '#f4fbff', fontWeight: '700' }}>{pet.name}</Text>
-                  <Text style={{ color: '#9cb6c7', fontSize: 12, marginTop: 4 }}>{pet.detail}</Text>
+            {highlights.length > 0 ? (
+              highlights.map((pet) => (
+                <View key={pet.name} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#0d2130', padding: 12, borderRadius: 14 }}>
+                  <View>
+                    <Text style={{ color: '#f4fbff', fontWeight: '700' }}>{pet.name}</Text>
+                    <Text style={{ color: '#9cb6c7', fontSize: 12, marginTop: 4 }}>{pet.detail}</Text>
+                  </View>
+                  <View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: pet.tint }} />
                 </View>
-                <View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: pet.tint }} />
-              </View>
-            ))}
+              ))
+            ) : (
+              <Text style={{ color: '#9cb6c7' }}>No pets are synced yet.</Text>
+            )}
           </View>
         </View>
 
