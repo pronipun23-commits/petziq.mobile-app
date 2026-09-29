@@ -1,8 +1,15 @@
 import { useCallback, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { createReminder, deleteReminder, getReminders, updateReminder, type ReminderRow } from '../../services/supabase';
+import {
+  cancelReminderNotification,
+  getReminderNotificationsEnabled,
+  requestReminderNotificationsPermission,
+  syncPendingReminderNotifications,
+  syncReminderNotification,
+} from '../../services/reminderNotifications';
 
 const formatReminderTime = (dueAt?: string | null) => {
   if (!dueAt) return 'No date set';
@@ -26,6 +33,7 @@ export default function RemindersScreen() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notificationsEnabled, setNotificationsEnabled] = useState(false);
 
   const loadReminders = useCallback(async () => {
     setLoading(true);
@@ -34,6 +42,14 @@ export default function RemindersScreen() {
     try {
       const nextReminders = await getReminders();
       setReminders(nextReminders);
+
+      try {
+        const enabled = await getReminderNotificationsEnabled();
+        setNotificationsEnabled(enabled);
+        if (enabled) await syncPendingReminderNotifications(nextReminders);
+      } catch (notificationError) {
+        console.warn('Could not sync reminder notifications:', notificationError);
+      }
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : 'Could not load reminders.');
     } finally {
@@ -63,7 +79,7 @@ export default function RemindersScreen() {
     setSaving(true);
     setError(null);
 
-    const { error: createError } = await createReminder({
+    const { data: createdReminder, error: createError } = await createReminder({
       title: title.trim(),
       notes: notes.trim() || null,
       type: 'custom',
@@ -81,6 +97,15 @@ export default function RemindersScreen() {
     setTitle('');
     setNotes('');
     setDueAt('');
+    if (createdReminder) {
+      try {
+        await syncReminderNotification(createdReminder);
+        setNotificationsEnabled(await getReminderNotificationsEnabled());
+      } catch (notificationError) {
+        console.warn('Could not schedule reminder notification:', notificationError);
+        setError('Reminder saved, but its notification could not be scheduled.');
+      }
+    }
     void loadReminders();
   };
 
@@ -97,6 +122,16 @@ export default function RemindersScreen() {
       return;
     }
 
+    try {
+      if (nextCompletedState) {
+        await cancelReminderNotification(reminder.id);
+      } else {
+        await syncReminderNotification({ ...reminder, is_completed: false });
+      }
+    } catch (notificationError) {
+      console.warn('Could not update reminder notification:', notificationError);
+    }
+
     void loadReminders();
   };
 
@@ -108,12 +143,50 @@ export default function RemindersScreen() {
       return;
     }
 
+    try {
+      await cancelReminderNotification(id);
+    } catch (notificationError) {
+      console.warn('Could not cancel reminder notification:', notificationError);
+    }
+
     void loadReminders();
+  };
+
+  const handleEnableNotifications = async () => {
+    try {
+      const enabled = await requestReminderNotificationsPermission();
+      setNotificationsEnabled(enabled);
+      if (enabled) await syncPendingReminderNotifications(reminders);
+    } catch (notificationError) {
+      console.warn('Could not enable reminder notifications:', notificationError);
+      setError('Could not enable reminder notifications. Please try again.');
+    }
   };
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#07141d', padding: 20 }}>
       <Text style={{ color: '#f4fbff', fontSize: 28, fontWeight: '800', marginBottom: 18 }}>Reminders</Text>
+
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#102a39', borderRadius: 14, padding: 14, borderWidth: 1, borderColor: '#1d3a48', marginBottom: 18 }}>
+        <View style={{ flex: 1, marginRight: 12 }}>
+          <Text style={{ color: '#edf8ff', fontWeight: '700' }}>
+            {notificationsEnabled ? 'Reminder alerts are on' : 'Get alerts for your reminders'}
+          </Text>
+          {!notificationsEnabled ? (
+            <Text style={{ color: '#9cb6c7', fontSize: 12, marginTop: 4 }}>
+              {Platform.OS === 'web' ? 'Device notifications are unavailable on web.' : 'Allow notifications to be reminded on time.'}
+            </Text>
+          ) : null}
+        </View>
+        {!notificationsEnabled && Platform.OS !== 'web' ? (
+          <Pressable
+            onPress={() => void handleEnableNotifications()}
+            style={{ backgroundColor: '#2ec7a2', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 9 }}
+          >
+            <Text style={{ color: '#061d1d', fontWeight: '800', fontSize: 12 }}>Enable</Text>
+          </Pressable>
+        ) : null}
+      </View>
 
       <View style={{ backgroundColor: '#102a39', borderRadius: 18, padding: 16, borderWidth: 1, borderColor: '#1d3a48', marginBottom: 18 }}>
         <Text style={{ color: '#edf8ff', fontWeight: '700', marginBottom: 10 }}>Add reminder</Text>
