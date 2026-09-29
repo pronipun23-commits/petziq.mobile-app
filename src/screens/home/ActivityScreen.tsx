@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { createActivity, deleteActivity, getActivities, getPets, updateActivity, type ActivityRow, type PetRow } from '../../services/supabase';
+import { useFocusEffect } from '@react-navigation/native';
+import { createActivity, deleteActivity, getActivities, getPets, type ActivityRow, type PetRow } from '../../services/supabase';
 
 const formatActivityDate = (value?: string | null) => {
   if (!value) return 'No date set';
@@ -21,35 +22,52 @@ export default function ActivityScreen() {
   const [pets, setPets] = useState<PetRow[]>([]);
   const [activities, setActivities] = useState<ActivityRow[]>([]);
   const [selectedPetId, setSelectedPetId] = useState<string>('all');
-  const [activityType, setActivityType] = useState('walk');
+  const [activityType, setActivityType] = useState('');
   const [notes, setNotes] = useState('');
-  const [duration, setDuration] = useState('30');
+  const [duration, setDuration] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const loadActivities = async () => {
+  const loadActivities = useCallback(async () => {
     setLoading(true);
     setError(null);
 
-    const [nextPets, nextActivities] = await Promise.all([getPets(), getActivities()]);
-    setPets(nextPets);
-    setActivities(nextActivities);
-    setLoading(false);
-  };
-
-  useEffect(() => {
-    void loadActivities();
+    try {
+      const [nextPets, nextActivities] = await Promise.all([getPets(), getActivities()]);
+      setPets(nextPets);
+      setActivities(nextActivities);
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : 'Could not load activity.');
+    } finally {
+      setLoading(false);
+    }
   }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      void loadActivities();
+    }, [loadActivities]),
+  );
 
   const visibleActivities =
     selectedPetId === 'all' ? activities : activities.filter((item) => item.pet_id === selectedPetId);
 
   const handleCreateActivity = async () => {
     const petId = selectedPetId === 'all' ? pets[0]?.id : selectedPetId;
+    const normalizedType = activityType.trim();
+    const durationMinutes = duration.trim() ? Number(duration) : null;
 
     if (!petId) {
       setError('Select a pet before adding activity.');
+      return;
+    }
+    if (!normalizedType) {
+      setError('Enter an activity type before saving.');
+      return;
+    }
+    if (durationMinutes !== null && (!Number.isInteger(durationMinutes) || durationMinutes < 0)) {
+      setError('Duration must be a whole number of minutes.');
       return;
     }
 
@@ -58,9 +76,9 @@ export default function ActivityScreen() {
 
     const { error: createError } = await createActivity({
       pet_id: petId,
-      activity_type: activityType.trim() || 'walk',
+      activity_type: normalizedType,
       notes: notes.trim() || null,
-      duration_minutes: Number(duration) || 0,
+      duration_minutes: durationMinutes,
       activity_date: new Date().toISOString(),
     });
 
@@ -72,7 +90,8 @@ export default function ActivityScreen() {
     }
 
     setNotes('');
-    setDuration('30');
+    setActivityType('');
+    setDuration('');
     void loadActivities();
   };
 

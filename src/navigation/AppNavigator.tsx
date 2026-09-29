@@ -1,3 +1,5 @@
+import { useEffect, useState } from 'react';
+import { ActivityIndicator, View } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { Home, PawPrint, BellRing, Activity, QrCode, Leaf, Bot, UserRound } from 'lucide-react-native';
@@ -14,10 +16,10 @@ import PetHealthScreen from '../screens/pets/PetHealthScreen';
 import MyTagsScreen from '../screens/smart-tags/MyTagsScreen';
 import ActivateTagScreen from '../screens/smart-tags/ActivateTagScreen';
 import QRScannerScreen from '../screens/smart-tags/QRScannerScreen';
-import LostPetScreen from '../screens/smart-tags/LostPetScreen';
 import PlantsScreen from '../screens/plants/PlantsScreen';
 import PetziqAIScreen from '../screens/ai/PetziqAIScreen';
 import SettingsScreen from '../screens/settings/SettingsScreen';
+import { supabase } from '../services/supabase';
 
 type AuthStackParamList = {
   Login: undefined;
@@ -27,6 +29,7 @@ type AuthStackParamList = {
 };
 
 const AuthStack = createNativeStackNavigator<AuthStackParamList>();
+const MainStack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
 
 function MainTabs() {
@@ -90,13 +93,57 @@ function MainTabs() {
 }
 
 export default function AppNavigator() {
+  const [session, setSession] = useState<Awaited<ReturnType<typeof supabase.auth.getSession>>['data']['session']>(null);
+  const [initializing, setInitializing] = useState(true);
+
+  useEffect(() => {
+    const { data: authListener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      setSession(nextSession);
+      setInitializing(false);
+    });
+
+    void supabase.auth.getSession().then(({ data, error }) => {
+      if (error) console.error('Session restore error:', error.message);
+      setSession(data.session);
+      setInitializing(false);
+    });
+
+    return () => authListener.subscription.unsubscribe();
+  }, []);
+
+  if (initializing) {
+    return (
+      <View style={{ flex: 1, backgroundColor: '#07141d', alignItems: 'center', justifyContent: 'center' }}>
+        <ActivityIndicator color="#8ae0c5" />
+      </View>
+    );
+  }
+
   return (
     <AuthStack.Navigator screenOptions={{ headerShown: false }}>
-      <AuthStack.Screen name="Login" component={LoginScreen} />
-      <AuthStack.Screen name="Register" component={RegisterScreen} />
-      <AuthStack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
-      <AuthStack.Screen name="Main" component={MainTabs} />
+      {session ? (
+        <AuthStack.Screen name="Main" component={AuthenticatedNavigator} />
+      ) : (
+        <>
+          <AuthStack.Screen name="Login" component={LoginScreen} />
+          <AuthStack.Screen name="Register" component={RegisterScreen} />
+          <AuthStack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
+        </>
+      )}
     </AuthStack.Navigator>
+  );
+}
+
+function AuthenticatedNavigator() {
+  return (
+    <MainStack.Navigator screenOptions={{ headerShown: false }}>
+      <MainStack.Screen name="Tabs" component={MainTabs} />
+      <MainStack.Screen name="AddPet" component={AddPetScreen} />
+      <MainStack.Screen name="PetProfile" component={PetProfileScreen} />
+      <MainStack.Screen name="PetHealth" component={PetHealthScreen} />
+      <MainStack.Screen name="ActivateTag" component={ActivateTagScreen} />
+      <MainStack.Screen name="QRScanner" component={QRScannerScreen} />
+    </MainStack.Navigator>
   );
 }
 
@@ -106,5 +153,4 @@ export {
   PetHealthScreen,
   ActivateTagScreen,
   QRScannerScreen,
-  LostPetScreen,
 };

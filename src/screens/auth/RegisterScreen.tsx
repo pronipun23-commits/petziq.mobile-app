@@ -9,24 +9,24 @@ type AuthStackParamList = {
   Login: undefined;
   Register: undefined;
   ForgotPassword: undefined;
-  Main: undefined;
 };
 
 export default function RegisterScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<AuthStackParamList>>();
   const [fullName, setFullName] = useState('');
+  const [petName, setPetName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
 
   const handleRegister = async () => {
-    if (!fullName.trim() || !email.trim() || !password.trim()) {
-      Alert.alert('Missing details', 'Please fill in your full name, email, and password.');
+    if (!fullName.trim() || !petName.trim() || !email.trim() || !password.trim()) {
+      Alert.alert('Missing details', 'Please fill in your name, your pet’s name, email, and password.');
       return;
     }
 
     setLoading(true);
-    const { error } = await signUpWithEmail(email.trim(), password, fullName.trim());
+    const { data, error } = await signUpWithEmail(email.trim(), password, fullName.trim(), petName.trim());
     setLoading(false);
 
     if (error) {
@@ -35,7 +35,7 @@ export default function RegisterScreen() {
     }
 
     Alert.alert('Account created', 'Your Petziq account is ready. Please check your inbox to confirm your email.');
-    navigation.navigate('Login');
+    if (!data.session) navigation.navigate('Login');
   };
 
   return (
@@ -47,6 +47,10 @@ export default function RegisterScreen() {
         <View>
           <Text style={{ color: '#9cb6c7', marginBottom: 8 }}>Full name</Text>
           <TextInput value={fullName} onChangeText={setFullName} style={{ backgroundColor: '#102a39', borderRadius: 14, padding: 14, borderWidth: 1, borderColor: '#21475a', color: '#edf8ff' }} placeholder="Jane Pet Parent" placeholderTextColor="#7a90a3" />
+        </View>
+        <View>
+          <Text style={{ color: '#9cb6c7', marginBottom: 8 }}>Pet name</Text>
+          <TextInput value={petName} onChangeText={setPetName} style={{ backgroundColor: '#102a39', borderRadius: 14, padding: 14, borderWidth: 1, borderColor: '#21475a', color: '#edf8ff' }} placeholder="Pet name" placeholderTextColor="#7a90a3" />
         </View>
         <View>
           <Text style={{ color: '#9cb6c7', marginBottom: 8 }}>Email</Text>

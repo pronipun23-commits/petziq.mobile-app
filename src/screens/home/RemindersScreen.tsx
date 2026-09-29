@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useFocusEffect } from '@react-navigation/native';
 import { createReminder, deleteReminder, getReminders, updateReminder, type ReminderRow } from '../../services/supabase';
 
 const formatReminderTime = (dueAt?: string | null) => {
@@ -21,26 +22,41 @@ export default function RemindersScreen() {
   const [reminders, setReminders] = useState<ReminderRow[]>([]);
   const [title, setTitle] = useState('');
   const [notes, setNotes] = useState('');
+  const [dueAt, setDueAt] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const loadReminders = async () => {
+  const loadReminders = useCallback(async () => {
     setLoading(true);
     setError(null);
 
-    const nextReminders = await getReminders();
-    setReminders(nextReminders);
-    setLoading(false);
-  };
-
-  useEffect(() => {
-    void loadReminders();
+    try {
+      const nextReminders = await getReminders();
+      setReminders(nextReminders);
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : 'Could not load reminders.');
+    } finally {
+      setLoading(false);
+    }
   }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      void loadReminders();
+    }, [loadReminders]),
+  );
 
   const handleCreateReminder = async () => {
     if (!title.trim()) {
       setError('Reminder title is required.');
+      return;
+    }
+
+    const normalizedDueAt = dueAt.trim().replace(/^(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2})$/, '$1T$2:00');
+    const parsedDueAt = new Date(normalizedDueAt);
+    if (!dueAt.trim() || Number.isNaN(parsedDueAt.getTime())) {
+      setError('Enter a valid due date and time.');
       return;
     }
 
@@ -51,7 +67,7 @@ export default function RemindersScreen() {
       title: title.trim(),
       notes: notes.trim() || null,
       type: 'custom',
-      due_at: new Date().toISOString(),
+      due_at: parsedDueAt.toISOString(),
       is_completed: false,
     });
 
@@ -64,6 +80,7 @@ export default function RemindersScreen() {
 
     setTitle('');
     setNotes('');
+    setDueAt('');
     void loadReminders();
   };
 
@@ -112,6 +129,14 @@ export default function RemindersScreen() {
           onChangeText={setNotes}
           placeholder="Notes"
           placeholderTextColor="#7a9ab1"
+          style={{ backgroundColor: '#0d2130', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, color: '#f4fbff', marginBottom: 12 }}
+        />
+        <TextInput
+          value={dueAt}
+          onChangeText={setDueAt}
+          placeholder="YYYY-MM-DD HH:mm"
+          placeholderTextColor="#7a9ab1"
+          accessibilityLabel="Reminder due date and time"
           style={{ backgroundColor: '#0d2130', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, color: '#f4fbff', marginBottom: 12 }}
         />
         <Pressable

@@ -1,8 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { View, Text, Pressable, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { PawPrint, Bell, Heart, CalendarClock, Activity, ArrowRight, Sparkles } from 'lucide-react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { getActivities, getPets, getReminders, type ActivityRow, type PetRow, type ReminderRow } from '../../services/supabase';
 
@@ -11,29 +11,41 @@ export default function HomeScreen() {
   const [pets, setPets] = useState<PetRow[]>([]);
   const [reminders, setReminders] = useState<ReminderRow[]>([]);
   const [activities, setActivities] = useState<ActivityRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
-  useEffect(() => {
-    const loadDashboardData = async () => {
-      const [nextPets, nextReminders, nextActivities] = await Promise.all([getPets(), getReminders(), getActivities()]);
-      setPets(nextPets);
-      setReminders(nextReminders);
-      setActivities(nextActivities);
-    };
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
+      const loadDashboardData = async () => {
+        setLoadError(null);
+        try {
+          const [nextPets, nextReminders, nextActivities] = await Promise.all([getPets(), getReminders(), getActivities()]);
+          if (!active) return;
+          setPets(nextPets);
+          setReminders(nextReminders);
+          setActivities(nextActivities);
+        } catch (error) {
+          if (active) setLoadError(error instanceof Error ? error.message : 'Could not load your dashboard.');
+        } finally {
+          if (active) setLoading(false);
+        }
+      };
 
-    void loadDashboardData();
-  }, []);
+      void loadDashboardData();
+      return () => {
+        active = false;
+      };
+    }, []),
+  );
 
   const upcomingReminders = reminders.filter((reminder) => !reminder.is_completed).length;
   const completedReminders = reminders.filter((reminder) => reminder.is_completed).length;
   const todayActivities = activities.filter((activity) => {
     if (!activity.activity_date) return false;
-    const activityDate = new Date(activity.activity_date);
     const now = new Date();
-    return (
-      activityDate.getFullYear() === now.getFullYear() &&
-      activityDate.getMonth() === now.getMonth() &&
-      activityDate.getDate() === now.getDate()
-    );
+    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    return activity.activity_date.slice(0, 10) === today;
   }).length;
   const totalMinutes = activities.reduce((sum, activity) => sum + Number(activity.duration_minutes ?? 0), 0);
 
@@ -43,10 +55,9 @@ export default function HomeScreen() {
     { label: 'Activity', value: String(todayActivities || 0), icon: Activity, route: 'Activity' },
   ];
 
-  const statusSummary = pets.length > 0 ? pets.filter((pet) => (pet.health_status || '').toLowerCase() !== 'poor').length : 0;
   const highlights = pets.slice(0, 2).map((pet) => ({
     name: pet.name,
-    detail: `${pet.species || 'Pet'} • ${pet.health_status || 'healthy'}`,
+    detail: [pet.species, pet.breed].filter(Boolean).join(' · '),
     tint: '#7dd3fc',
   }));
 
@@ -65,7 +76,9 @@ export default function HomeScreen() {
           </Pressable>
         </View>
 
-        <Text style={{ color: '#8ae0c5', fontWeight: '700', marginBottom: 6 }}>Good morning</Text>
+        {loading ? <Text style={{ color: '#9cb6c7', marginBottom: 12 }}>Loading your data...</Text> : null}
+        {loadError ? <Text style={{ color: '#ff8a8a', marginBottom: 12 }}>{loadError}</Text> : null}
+        <Text style={{ color: '#8ae0c5', fontWeight: '700', marginBottom: 6 }}>Today</Text>
         <Text style={{ color: '#f5fbff', fontSize: 30, fontWeight: '800', lineHeight: 38 }}>Your pets are ready for today.</Text>
 
         <View style={{ marginTop: 24, backgroundColor: '#102a39', borderRadius: 20, padding: 18, borderWidth: 1, borderColor: '#1d3a48' }}>
@@ -76,8 +89,8 @@ export default function HomeScreen() {
               <Text style={{ color: '#f4fbff', fontSize: 26, fontWeight: '800' }}>{String(upcomingReminders).padStart(2, '0')}</Text>
             </View>
             <View style={{ flex: 1, backgroundColor: '#0d2130', borderRadius: 14, padding: 14 }}>
-              <Text style={{ color: '#9cb6c7', fontSize: 12 }}>Health</Text>
-              <Text style={{ color: '#baf7df', fontSize: 26, fontWeight: '800' }}>{statusSummary > 0 ? 'Good' : 'Review'}</Text>
+              <Text style={{ color: '#9cb6c7', fontSize: 12 }}>Pets</Text>
+              <Text style={{ color: '#baf7df', fontSize: 26, fontWeight: '800' }}>{pets.length}</Text>
             </View>
           </View>
         </View>
@@ -118,14 +131,14 @@ export default function HomeScreen() {
                 <View key={pet.name} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#0d2130', padding: 12, borderRadius: 14 }}>
                   <View>
                     <Text style={{ color: '#f4fbff', fontWeight: '700' }}>{pet.name}</Text>
-                    <Text style={{ color: '#9cb6c7', fontSize: 12, marginTop: 4 }}>{pet.detail}</Text>
+                    {pet.detail ? <Text style={{ color: '#9cb6c7', fontSize: 12, marginTop: 4 }}>{pet.detail}</Text> : null}
                   </View>
                   <View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: pet.tint }} />
                 </View>
               ))
-            ) : (
-              <Text style={{ color: '#9cb6c7' }}>No pets are synced yet.</Text>
-            )}
+            ) : !loading && !loadError ? (
+              <Text style={{ color: '#9cb6c7' }}>No pets yet.</Text>
+            ) : null}
           </View>
         </View>
 

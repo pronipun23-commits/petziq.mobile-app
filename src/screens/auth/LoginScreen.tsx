@@ -9,7 +9,6 @@ type AuthStackParamList = {
   Login: undefined;
   Register: undefined;
   ForgotPassword: undefined;
-  Main: undefined;
 };
 
 export default function LoginScreen() {
@@ -33,7 +32,6 @@ export default function LoginScreen() {
       return;
     }
 
-    navigation.navigate('Main');
   };
 
   return (
